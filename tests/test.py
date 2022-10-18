@@ -41,7 +41,7 @@ class Test:
             self.root = pathlib.Path(root)
             self.root.chmod(0o750)  # TODO: add as command line option ?
         else:
-            root=pathlib.Path('root')
+            self.root=pathlib.Path(root)
 
 
     def __del__(self):
@@ -257,8 +257,9 @@ if __name__=="__main__":
     parser = argparse.ArgumentParser(description='Test an ultra-cp program according to the I/O TP.')
     parser.add_argument('prog_path', help='the tested program path (must be an executable file)')
     parser.add_argument('-p', '--no-zero-mode', dest='no_perms', action='store_false', help='tests will NOT include files without any permission (only applies to concerned tests)')
+    parser.add_argument('-d', '--delete-tests', dest='delete_tests', action='store_false', help='delete the test folders when tests are over')
     args = parser.parse_args()
-    t = Test(args.prog_path)
+    t = Test(args.prog_path, delete_root=args.delete_tests)
     t.test_listing(args.no_perms)
     t.test_file_copy()
     t.test_file_dir_copy()
@@ -268,4 +269,8 @@ if __name__=="__main__":
     t.test_replace_time_or_size()
     t.test_option_a()
     t.test_option_f()
+
+    if not args.delete_tests:
+        print('Tests can be found in folder: {}'.format(t.root))
+
     sys.exit(test_failed)

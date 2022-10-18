@@ -35,4 +35,4 @@ test:
   before_script:
     - apt clean && apt update -qy && apt -y install python3-colorama
   script:
-    - tests/test.py "$EXEC_NAME"
+    - tests/test.py -d "$EXEC_NAME"
