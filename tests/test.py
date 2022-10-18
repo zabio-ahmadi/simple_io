@@ -10,18 +10,21 @@ import pathlib
 import shutil
 from colorama import Fore
 import argparse
+import sys
 
 # TODO: How to include the folder creation in the test function instead of repeating it for all test functions
 # TODO: pass over EVERY ASSERTION ERROR (i.e. continu test). But seems unlikely to be done easily
-
+test_failed = False
 def test(func):
     def wrapper(self):
+        global test_failed
         print(func.__name__ + ": ", end="")
         try:
             func(self)
         except Exception as e:
             print(Fore.RED + "FAILED" + Fore.RESET)
             logging.error(f"{type(e).__name__}:{str(e)}")
+            test_failed = True
             return
         print(Fore.GREEN + "SUCCESS" + Fore.RESET)
 
@@ -251,7 +254,7 @@ class Test:
 
 
 if __name__=="__main__":
-    parser = argparse.ArgumentParser(description='Test an ultra-cp program according to the I/O TP of the course "system programming".')
+    parser = argparse.ArgumentParser(description='Test an ultra-cp program according to the I/O TP.')
     parser.add_argument('prog_path', help='the tested program path (must be an executable file)')
     parser.add_argument('-p', '--no-zero-mode', dest='no_perms', action='store_false', help='tests will NOT include files without any permission (only applies to concerned tests)')
     args = parser.parse_args()
@@ -265,4 +268,4 @@ if __name__=="__main__":
     t.test_replace_time_or_size()
     t.test_option_a()
     t.test_option_f()
-    input('Tests are over press a key and directory will be cleaned')
+    sys.exit(test_failed)
