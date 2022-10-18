@@ -111,8 +111,7 @@ class Test:
         except Exception as e:
             logging.error(f"{type(e).__name__}:{str(e)}")
             logging.error("Cannot show more (or any ?) program output as the program failed with the above error")
-
-        input('Please validate output visually (not automatized yet) and press enter when done')
+        print('Please validate output visually (not automatized yet) !!!')
 
 
     @test
@@ -257,7 +256,7 @@ if __name__=="__main__":
     parser = argparse.ArgumentParser(description='Test an ultra-cp program according to the I/O TP.')
     parser.add_argument('prog_path', help='the tested program path (must be an executable file)')
     parser.add_argument('-p', '--no-zero-mode', dest='no_perms', action='store_false', help='tests will NOT include files without any permission (only applies to concerned tests)')
-    parser.add_argument('-d', '--delete-tests', dest='delete_tests', action='store_false', help='delete the test folders when tests are over')
+    parser.add_argument('-d', '--delete-tests', dest='delete_tests', action='store_true', help='delete the test folders when tests are over')
     args = parser.parse_args()
     t = Test(args.prog_path, delete_root=args.delete_tests)
     t.test_listing(args.no_perms)
