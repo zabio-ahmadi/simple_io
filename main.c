@@ -17,6 +17,75 @@
 
 // après les vacances test sur processus
 
+void printDetails(const char *d_name, const char *path, const struct stat file_stat)
+{
+    if (strcmp(d_name, "..") != 0 && strcmp(d_name, ".") != 0)
+    {
+
+        if (S_ISDIR(file_stat.st_mode))
+            printf("d");
+        else
+            printf("-");
+
+        if (file_stat.st_mode & S_IRUSR) // read permission
+            printf("r");
+        else
+            printf("-");
+
+        if (file_stat.st_mode & S_IWUSR) // write permission
+            printf("w");
+        else
+            printf("-");
+
+        if (file_stat.st_mode & S_IXUSR)
+            printf("x");
+        else
+            printf("-");
+
+        if (file_stat.st_mode & S_IRGRP)
+            printf("r");
+        else
+            printf("-");
+
+        if (file_stat.st_mode & S_IWGRP)
+            printf("w");
+        else
+            printf("-");
+
+        if (file_stat.st_mode & S_IXGRP)
+            printf("x");
+        else
+            printf("-");
+        if (file_stat.st_mode & S_IROTH)
+            printf("r");
+        else
+            printf("-");
+
+        if (file_stat.st_mode & S_IWOTH)
+            printf("w");
+        else
+            printf("-");
+
+        if (file_stat.st_mode & S_IXOTH)
+            printf("x");
+        else
+            printf("-");
+
+        // affiche la taille de fichier ou dossier
+        printf("\t%ld", file_stat.st_size);
+
+        struct tm *timeinfo = localtime(&file_stat.st_mtime); // la date en format local
+
+        char *dateTime = asctime(timeinfo); // string of date  -> Day Mon dd hh:mm:ss yyyy\n
+
+        // remove last trailing character
+        if (dateTime[strlen(dateTime) - 1] == '\n')
+            dateTime[strlen(dateTime) - 1] = '\0';
+
+        printf("\t %s", dateTime);
+        printf("\t%s/%s\n", path, d_name);
+    }
+}
 void readFolder(char *path)
 {
     DIR *folder;
@@ -28,57 +97,29 @@ void readFolder(char *path)
         exit(EXIT_FAILURE);
     }
 
-    struct dirent *entry;
-    const char *d_name; // nom d'une entrée
+    struct dirent *entry; // contient l'information concernant le répertoire
+    const char *d_name;   // nom d'une entrée
+
     struct stat file_stat;
 
-    char path2[PATH_MAX];
-    while ((entry = readdir(folder)) != NULL)
+    while ((entry = readdir(folder)) != NULL) // tante qu'il y a des dossier
     {
         // Obtient le nom de l'entrée et affiche
         d_name = entry->d_name;
 
-        snprintf(path2, PATH_MAX, "%s/%s", path, d_name);
+        // créer notre prochain path
+        char new_path[PATH_MAX];
+        snprintf(new_path, PATH_MAX, "%s/%s", path, d_name);
 
-        stat(path2, &file_stat);
-        if (strcmp(d_name, "..") != 0 && strcmp(d_name, ".") != 0)
-        {
-            printf((S_ISDIR(file_stat.st_mode)) ? "d" : "-");
-            printf((file_stat.st_mode & S_IRUSR) ? "r" : "-");
-            printf((file_stat.st_mode & S_IWUSR) ? "w" : "-");
-            printf((file_stat.st_mode & S_IXUSR) ? "x" : "-");
-            printf((file_stat.st_mode & S_IRGRP) ? "r" : "-");
-            printf((file_stat.st_mode & S_IWGRP) ? "w" : "-");
-            printf((file_stat.st_mode & S_IXGRP) ? "x" : "-");
-            printf((file_stat.st_mode & S_IROTH) ? "r" : "-");
-            printf((file_stat.st_mode & S_IWOTH) ? "w" : "-");
-            printf((file_stat.st_mode & S_IXOTH) ? "x" : "-");
+        // lire les meta-données
+        stat(new_path, &file_stat);
 
-            printf("\t%ld", file_stat.st_size);
-
-            struct tm *timeinfo = localtime(&file_stat.st_mtime); // or gmtime() depending on what you want
-            char *dateTime = asctime(timeinfo);
-
-            // remove last trailing character
-            if (dateTime[strlen(dateTime) - 1] == '\n')
-                dateTime[strlen(dateTime) - 1] = '\0';
-
-            printf("\t %s", dateTime);
-            printf("\t%s/%s\n", path, d_name);
-        }
+        printDetails(d_name, path, file_stat); // affiche meta-données de la répertoire.
 
         if (entry->d_type & DT_DIR)
         {
-
-            if (stat(d_name, &file_stat) == 0)
-            {
-
-                if (strcmp(d_name, "..") != 0 && strcmp(d_name, ".") != 0)
-                {
-
-                    readFolder(path2);
-                }
-            }
+            if (strcmp(d_name, "..") != 0 && strcmp(d_name, ".") != 0)
+                readFolder(new_path);
         }
     }
     if (closedir(folder))
