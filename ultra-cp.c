@@ -14,8 +14,6 @@
 #include <fcntl.h>
 #include <stdbool.h>
 
-// après les vacances test sur processus
-
 void printDetails(const char *d_name, const char *path, const struct stat file_stat)
 {
 
@@ -182,7 +180,7 @@ mode_t readFileFolderPermission(const char *file)
     return file_stat.st_mode;
 }
 
-int copy_file_to_file(const char *from, const char *to)
+int copy(const char *from, const char *to, bool fileAreadyExist)
 {
     int fd_to, fd_from;
     char buf[4096];
@@ -196,185 +194,87 @@ int copy_file_to_file(const char *from, const char *to)
         return -1;
     }
 
-    fd_to = open(to, O_WRONLY | O_EXCL, 0600);
-    if (fd_to < 0)
-    {
-        int savedError = errno;
-        close(fd_from);
-        fprintf(stderr, "Could not open the file %s: %s\n",
-                to, strerror(savedError));
-        return -1;
-    }
+    // fd_to = open(to, O_WRONLY | O_CREAT | O_EXCL, 777);
+    if (fileAreadyExist)
+        fd_to = open(to, O_WRONLY | O_EXCL, 777);
 
-    while (nread = read(fd_from, buf, sizeof buf), nread > 0)
-    {
-        char *out_ptr = buf;
-        ssize_t nwritten;
-        do
-        {
-            nwritten = write(fd_to, out_ptr, nread);
-            if (nwritten >= 0)
-            {
-                nread -= nwritten;
-                out_ptr += nwritten;
-            }
-            else if (errno != EINTR)
-            {
-                int savedError = errno;
-                close(fd_from);
-                close(fd_to);
-                fprintf(stderr, "Could not copy  %s to %s: %s\n",
-                        from, to, strerror(savedError));
-                return -1;
-            }
-        } while (nread > 0);
-    }
-
-    if (nread != 0)
-    {
-        int savedError = errno;
-        close(fd_from);
-        close(fd_to);
-        fprintf(stderr, "Could not read %s: %s\n",
-                from, strerror(savedError));
-        return -1;
-    }
-
-    close(fd_from);
-    close(fd_to);
-    chmod(to, readFileFolderPermission(from));
-    return 0;
-}
-int copy(const char *from, const char *to)
-{
-    int fd_to, fd_from;
-    char buf[4096];
-    ssize_t nread;
-
-    fd_from = open(from, O_RDONLY);
-    if (fd_from < 0)
-    {
-        fprintf(stderr, "Could not open the file %s: %s\n",
-                from, strerror(errno));
-        return -1;
-    }
-
-    fd_to = open(to, O_WRONLY | O_CREAT | O_EXCL, 0600);
-    if (fd_to < 0)
-    {
-        int savedError = errno;
-        close(fd_from);
-        fprintf(stderr, "Could not open the file %s: %s\n",
-                to, strerror(savedError));
-        return -1;
-    }
-
-    while (nread = read(fd_from, buf, sizeof buf), nread > 0)
-    {
-        char *out_ptr = buf;
-        ssize_t nwritten;
-        do
-        {
-            nwritten = write(fd_to, out_ptr, nread);
-            if (nwritten >= 0)
-            {
-                nread -= nwritten;
-                out_ptr += nwritten;
-            }
-            else if (errno != EINTR)
-            {
-                int savedError = errno;
-                close(fd_from);
-                close(fd_to);
-                fprintf(stderr, "Could not copy  %s to %s: %s\n",
-                        from, to, strerror(savedError));
-                return -1;
-            }
-        } while (nread > 0);
-    }
-
-    if (nread != 0)
-    {
-        int savedError = errno;
-        close(fd_from);
-        close(fd_to);
-        fprintf(stderr, "Could not read %s: %s\n",
-                from, strerror(savedError));
-        return -1;
-    }
-
-    close(fd_from);
-    close(fd_to);
-    chmod(to, readFileFolderPermission(from));
-    return 0;
-}
-
-bool folderExists(const char *name)
-{
-    DIR *folder;
-    folder = opendir(name);
-
-    bool result = false;
-
-    if (folder == NULL)
-        return false;
     else
-        result = true;
+        fd_to = open(to, O_WRONLY | O_CREAT | O_EXCL, 777);
 
-    if (closedir(folder) != 0)
+    if (fd_to < 0)
     {
-        fprintf(stderr, "Could not close '%s': %s\n", name, strerror(errno));
-        exit(EXIT_FAILURE);
+        int savedError = errno;
+        close(fd_from);
+        fprintf(stderr, "Could not open the file %s: %s\n",
+                to, strerror(savedError));
+        return -1;
     }
-    return result;
+
+    while (nread = read(fd_from, buf, sizeof buf), nread > 0)
+    {
+        char *out_ptr = buf;
+        ssize_t nwritten;
+        do
+        {
+            nwritten = write(fd_to, out_ptr, nread);
+            if (nwritten >= 0)
+            {
+                nread -= nwritten;
+                out_ptr += nwritten;
+            }
+            else if (errno != EINTR)
+            {
+                int savedError = errno;
+                close(fd_from);
+                close(fd_to);
+                fprintf(stderr, "Could not copy  %s to %s: %s\n",
+                        from, to, strerror(savedError));
+                return -1;
+            }
+        } while (nread > 0);
+    }
+
+    if (nread != 0)
+    {
+        int savedError = errno;
+        close(fd_from);
+        close(fd_to);
+        fprintf(stderr, "Could not read %s: %s\n",
+                from, strerror(savedError));
+        return -1;
+    }
+
+    close(fd_from);
+    close(fd_to);
+    chmod(to, readFileFolderPermission(from));
+    return 0;
 }
 
-int isFile(const char *path)
+int isRegularFile(const char *path)
 {
     struct stat path_stat;
     stat(path, &path_stat);
-    return S_ISREG(path_stat.st_mode);
+    return (S_ISREG(path_stat.st_mode));
 }
 
-void copy_folder_to_folder(const char *src, const char *dst)
+bool directoryExist(char *path)
 {
+    struct stat path_stat;
+    stat(path, &path_stat);
+    return (S_ISDIR(path_stat.st_mode));
+}
 
-    // structure pour stoquer les données
-    struct stat file_stat;
-
-    // garantir une structure stat
-    if (lstat(src, &file_stat) == -1)
+void rec_copy(char *src, char *dst)
+{
+    DIR *dir = opendir(src); // Assuming absolute pathname here.
+    if (dir)
     {
-        fprintf(stderr, "Cannot stat %s: %s\n", src, strerror(errno));
-    }
-
-    if (S_ISDIR(file_stat.st_mode) && !S_ISLNK(file_stat.st_mode))
-    {
-
-        // copy folder to folder
-        DIR *folder;
-        folder = opendir(src); // renvoi un flux de type dossier
-        if (folder == NULL)
-        {
-            fprintf(stderr, "can't open folder :%s", src);
-            exit(EXIT_FAILURE);
-        }
-
-        struct dirent *entry;                     // contient le nome de répertoire + numéro d'inode, type de fichier ...
-        const char *d_name;                       // nom d'une entrée
-        while ((entry = readdir(folder)) != NULL) // tante qu'il y a des liens
+        struct dirent *entry;
+        char *d_name;
+        while ((entry = readdir(dir)) != NULL) // Iterates through the entire directory.
         {
             // Obtient le nom fichier ou dossier
             d_name = entry->d_name;
-
-            // check if destination folder exists
-            if (!folderExists(dst))
-            {
-                if (mkdir(dst, readFileFolderPermission(src)) != 0)
-                {
-                    fprintf(stderr, "Cannot create dst folder %s: %s\n", dst, strerror(errno));
-                }
-            }
 
             // répertoire curent + nome de fichier ou dossier
             char src_new_path[PATH_MAX];
@@ -385,94 +285,82 @@ void copy_folder_to_folder(const char *src, const char *dst)
 
             if (strcmp(d_name, "..") != 0 && strcmp(d_name, ".") != 0)
             {
-
-                copy_folder_to_folder(src_new_path, dst_new_path);
-                if (isFile(src_new_path))
+                struct stat info;
+                if (!stat(src_new_path, &info))
                 {
-                    if (isFile(dst_new_path))
+                    // if directory not exist
+                    if (!directoryExist(dst))
                     {
-                        copy_file_to_file(src_new_path, dst_new_path);
-                        // todo: update if src size is bigger than 
+                        mkdir(dst, readFileFolderPermission(src));
                     }
-                    else
+                    // Are we dealing with a directory?
+                    if (S_ISDIR(info.st_mode))
                     {
-                        copy(src_new_path, dst_new_path);
+
+                        // Make corresponding directory in the target folder here.
+                        rec_copy(src_new_path, dst_new_path); // Calls this function AGAIN, this time with the sub-name.
+                    }
+                    if (S_ISREG(info.st_mode))
+                    {
+                        if (isRegularFile(dst_new_path))
+                        {
+                            // @todo: check
+                            copy(src_new_path, dst_new_path, true);
+                        }
+                        else
+                        {
+                            copy(src_new_path, dst_new_path, false);
+                        }
                     }
                 }
             }
         }
-        if (closedir(folder) != 0)
-        {
-            fprintf(stderr, "Could not close '%s': %s\n",
-                    src, strerror(errno));
-            exit(EXIT_FAILURE);
-        }
+    }
+    if (closedir(dir) != 0)
+    {
+        fprintf(stderr, "Could not close directory '%s': %s\n", src, strerror(errno));
+        exit(EXIT_FAILURE);
     }
 }
 
 void copy_src_dest_single(char *src, char *dst)
 {
-    if (folderExists(src))
+    if (directoryExist(src))
     {
-        if (!folderExists(dst))
+        char dst_new_path[PATH_MAX];
+        snprintf(dst_new_path, PATH_MAX, "%s/%s", dst, src);
+
+        if (!directoryExist(dst))
         {
-            if (mkdir(dst, readFileFolderPermission(src)) != 0)
-            {
-                fprintf(stderr, "Cannot create folder %s: %s\n", dst, strerror(errno));
-            }
-            else
-            {
-                char dst_new_path[PATH_MAX];
-                snprintf(dst_new_path, PATH_MAX, "%s/%s", dst, src);
-                copy_folder_to_folder(src, dst_new_path);
-            }
+            mkdir(dst, readFileFolderPermission(src));
+            rec_copy(src, dst_new_path);
         }
-        else
+        if (directoryExist(dst))
         {
-            char dst_new_path[PATH_MAX];
-            snprintf(dst_new_path, PATH_MAX, "%s/%s", dst, src);
-            copy_folder_to_folder(src, dst_new_path);
+            rec_copy(src, dst_new_path);
         }
     }
-    //   if src a file
-    else
+
+    if (isRegularFile(src))
     {
-        // if dst is an existing file
-        if (isFile(dst))
+        if (!directoryExist(dst))
         {
-            copy_file_to_file(src, dst);
+            mkdir(dst, 0777);
+        }
+        char dst_new_path[PATH_MAX];
+        snprintf(dst_new_path, PATH_MAX, "%s/%s", dst, src);
+        // if dst already exist
+        if (isRegularFile(dst_new_path))
+        {
+            // @todo: check
+            copy(src, dst_new_path, true);
         }
         else
         {
-            struct stat file_stat;
-            // if dst an already folder is already exist
-            if ((stat(dst, &file_stat) == 0) && S_ISDIR(file_stat.st_mode))
-            {
-                // copy file to directory
-                char dst_new_path[PATH_MAX];
-                snprintf(dst_new_path, PATH_MAX, "%s/%s", dst, src);
-                if (isFile(dst_new_path))
-                {
-                    copy_file_to_file(src, dst_new_path);
-                }
-                else
-                {
-                    copy(src, dst_new_path);
-                }
-            }
-            else
-            {
-                //  create directory
-                mkdir(dst, S_IRUSR | S_IWUSR | S_IXUSR);
-                // copy file to directory
-                char dst_new_path[PATH_MAX];
-                snprintf(dst_new_path, PATH_MAX, "%s/%s", dst, src);
-                copy(src, dst_new_path);
-            }
+            copy(src, dst_new_path, false);
         }
     }
 }
-
 void copy_src_dest_multiple(int argc, char *argv[])
 {
     // because argv[0] is the application name
