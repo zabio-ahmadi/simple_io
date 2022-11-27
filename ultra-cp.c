@@ -14,14 +14,22 @@
 #include <fcntl.h>
 #include <stdbool.h>
 
+#include <getopt.h>
+#include <err.h>
+#include "libgen.h"
+#define OPT_PERMS 0b01
+#define OPT_LINK 0b10
+
 void printDetails(const char *d_name, const char *path, const struct stat file_stat)
 {
 
     // fil_stat conteint les meta-données d'un fichier, dosser
     // st_mode est un champ de bits contenant les permissions et le type d'un inode
+    // to do: affichage de liens symbolic
     if (S_ISDIR(file_stat.st_mode) && !S_ISLNK(file_stat.st_mode))
-        // to do: affichage de liens symbolic
         printf("d");
+    else if (S_ISLNK(file_stat.st_mode))
+        printf("l");
     else
         printf("-");
 
@@ -83,89 +91,88 @@ void printDetails(const char *d_name, const char *path, const struct stat file_s
     printf("\t %s", dateTime);
     printf("\t%s/%s\n", path, d_name);
 }
-void readFolder(char *path)
+
+int isRegularFile(const char *path)
 {
-    DIR *folder;
+    struct stat path_stat;
+    stat(path, &path_stat);
+    return (S_ISREG(path_stat.st_mode));
+}
 
-    folder = opendir(path); // renvoi un flux de type dossier
+bool file_exists(char *filename)
+{
+    struct stat buffer;
+    return (lstat(filename, &buffer) == 0);
+}
 
-    if (folder == NULL)
+char *read_link_real_path(char *src)
+{
+    return realpath(src, NULL);
+}
+
+int is_Link(const char *path)
+{
+    struct stat path_stat;
+    lstat(path, &path_stat);
+    return (S_ISLNK(path_stat.st_mode));
+}
+
+bool directoryExist(char *path)
+{
+    struct stat path_stat;
+    stat(path, &path_stat);
+    return (S_ISDIR(path_stat.st_mode));
+}
+
+int readFolder(char *src)
+{
+
+    DIR *dir = opendir(src); // Assuming absolute pathname here.
+    if (dir)
     {
-        fprintf(stderr, "can't open folder :%s", path);
-        exit(EXIT_FAILURE);
-    }
 
-    // représentent l'organisation des fichiers sous forme d'arborescence
-    // sont des inodes dont le contenu est une liste d'entrées dirent
-    // Les entrées d'un répertoire sont représentées par la structure:dirent
-    struct dirent *entry; // contient le nome de répertoire + numéro d'inode, type de fichier ...
-    const char *d_name;   // nom d'une entrée
-
-    struct stat file_stat; // structure pour stoquer les données sur le fichier ou dossier
-
-    /* struct stat
-    {
-        dev_t st_dev;         // device ID
-        ino_t st_ino;         // i-node number
-        mode_t st_mode;       // protection and type
-        nlink_t st_nlink;     // number of hard links
-        uid_t st_uid;         // user ID of owner
-        gid_t st_gid;         // group ID of owner
-        dev_t st_rdev;        // device type (if special file)
-        off_t st_size;        // total size, in bytes
-        blksize_t st_blksize; // blocksize for filesystem I/O
-        blkcnt_t st_blocks;   // number of 512B blocks
-        time_t st_atime;      // time of last access
-        time_t st_mtime;      // time of last modification
-        time_t st_ctime;      // time of last change
-    };
-    */
-
-    // Les entrées des répertoires sont des liens pointant vers des inodes.
-    while ((entry = readdir(folder)) != NULL) // tante qu'il y a des liens
-    {
-        // Obtient le nom fichier ou dossier
-        d_name = entry->d_name;
-
-        // répertoire curent + nome de fichier ou dossier
-        char new_path[PATH_MAX];
-        snprintf(new_path, PATH_MAX, "%s/%s", path, d_name);
-
-        // lire les meta-données de new_path
-        // met le dans structure file_stat
-
-        // error: -1
-        // garantir une structure stat
-        if (stat(new_path, &file_stat) == -1)
+        struct dirent *entry;
+        char *d_name;
+        while ((entry = readdir(dir)) != NULL)
         {
-            fprintf(stderr, "Cannot stat %s: %s\n", path, strerror(errno));
-        }
+            // Obtient le nom fichier ou dossier
+            d_name = entry->d_name; // Iterates through the entire directory.
 
-        printDetails(d_name, path, file_stat); // affiche meta-données de la répertoire.
+            // répertoire curent + nome de fichier ou dossier
+            char src_new_path[PATH_MAX];
+            snprintf(src_new_path, PATH_MAX, "%s/%s", src, d_name);
 
-        // si est un dossier
-        // Le champs d_type est un champs de bits contenant des informations sur le type de l'inode associé:
-        /*
-        DT_DIR	Répertoire
-        DT_LNK	Lien symbolique
-        DT_REG	Fichier de données
-        DT_UNKNOWN	Type inconnu
-        */
-        if (entry->d_type & DT_DIR)
-        {
-            // évite le dossier current est le dossier parent
-            // ne pas rapeler les deux dossier curent & parent
-            // if (strcmp(d_name, "..") != 0 && d_name[0] != '.')
-            if (strcmp(d_name, "..") != 0 && strcmp(d_name, ".") != 0)
-                readFolder(new_path);
+            if ((strcmp(d_name, "..") != 0 && strcmp(d_name, ".") != 0) && d_name[0] != '.')
+            {
+                struct stat info;
+                if (!lstat(src_new_path, &info))
+                {
+                    printDetails(d_name, src, info);
+                    // Are we dealing with a directory?
+                    if (S_ISDIR(info.st_mode) && !S_ISLNK(info.st_mode))
+                    {
+                        readFolder(src_new_path);
+                    }
+                    if (S_ISREG(info.st_mode) || S_ISLNK(info.st_mode))
+                    {
+                        // printDetails(d_name, src, info);
+                    }
+                }
+            }
         }
     }
-    if (closedir(folder) != 0)
+    if (closedir(dir) != 0)
     {
-        fprintf(stderr, "Could not close '%s': %s\n",
-                path, strerror(errno));
-        exit(EXIT_FAILURE);
+        struct stat folderStat;
+        lstat(src, &folderStat);
+        if ((folderStat.st_mode & S_IRUSR) && (folderStat.st_mode & S_IWUSR) && (folderStat.st_mode & S_IXUSR))
+        {
+            fprintf(stderr, "Could not close : permission denied '%s': %s\n",
+                    src, strerror(errno));
+            exit(EXIT_FAILURE);
+        }
     }
+    exit(EXIT_SUCCESS);
 }
 
 mode_t readFileFolderPermission(const char *file)
@@ -196,10 +203,13 @@ int copy(const char *from, const char *to, bool fileAreadyExist)
 
     // fd_to = open(to, O_WRONLY | O_CREAT | O_EXCL, 777);
     if (fileAreadyExist)
-        fd_to = open(to, O_WRONLY | O_EXCL, 777);
-
+    {
+        fd_to = open(to, O_WRONLY | O_EXCL, readFileFolderPermission(from));
+    }
     else
-        fd_to = open(to, O_WRONLY | O_CREAT | O_EXCL, 777);
+    {
+        fd_to = open(to, O_WRONLY | O_CREAT | O_EXCL, readFileFolderPermission(from));
+    }
 
     if (fd_to < 0)
     {
@@ -250,23 +260,17 @@ int copy(const char *from, const char *to, bool fileAreadyExist)
     return 0;
 }
 
-int isRegularFile(const char *path)
+/* copy recursivly directory */
+void rec_copy(char *src, char *dst, bool option_f, bool option_a)
 {
-    struct stat path_stat;
-    stat(path, &path_stat);
-    return (S_ISREG(path_stat.st_mode));
-}
 
-bool directoryExist(char *path)
-{
-    struct stat path_stat;
-    stat(path, &path_stat);
-    return (S_ISDIR(path_stat.st_mode));
-}
+    // Assuming Directory already exist
+    DIR *dir = opendir(src);
+    if (dir == NULL)
+    {
+        exit(EXIT_FAILURE);
+    }
 
-void rec_copy(char *src, char *dst)
-{
-    DIR *dir = opendir(src); // Assuming absolute pathname here.
     if (dir)
     {
         struct dirent *entry;
@@ -282,30 +286,59 @@ void rec_copy(char *src, char *dst)
 
             char dst_new_path[PATH_MAX];
             snprintf(dst_new_path, PATH_MAX, "%s/%s", dst, d_name);
-
-            if (strcmp(d_name, "..") != 0 && strcmp(d_name, ".") != 0)
+            if ((strcmp(d_name, "..") != 0 && strcmp(d_name, ".") != 0))
             {
+
                 struct stat info;
-                if (!stat(src_new_path, &info))
+                if (lstat(src_new_path, &info) == 0)
                 {
+
                     // if directory not exist
                     if (!directoryExist(dst))
                     {
                         mkdir(dst, readFileFolderPermission(src));
+                        chmod(dst, readFileFolderPermission(src));
                     }
-                    // Are we dealing with a directory?
-                    if (S_ISDIR(info.st_mode))
-                    {
 
+                    // Are we dealing with a directory?
+                    if (S_ISDIR(info.st_mode) && !S_ISLNK(info.st_mode))
+                    {
+                        // printf("src: %s dst:%s\n", src_new_path, dst_new_path);
                         // Make corresponding directory in the target folder here.
-                        rec_copy(src_new_path, dst_new_path); // Calls this function AGAIN, this time with the sub-name.
+                        rec_copy(src_new_path, dst_new_path, option_f, option_a);
                     }
-                    if (S_ISREG(info.st_mode))
+                    if (S_ISLNK(info.st_mode) && !S_ISDIR(info.st_mode))
+                    {
+                        // base path
+                        char base_path[PATH_MAX];
+                        getcwd(base_path, PATH_MAX);
+
+                        char final_dst[PATH_MAX];
+                        snprintf(final_dst, 3 * PATH_MAX, "%s/%s", base_path, dst_new_path);
+
+                        // dereference by default which is option f -> false
+                        if (option_f == false)
+                        {
+                            unlink(src_new_path);
+                            FILE *fp;
+                            fp = fopen(src_new_path, "w");
+                            fclose(fp);
+                        }
+                    }
+
+                    if (S_ISREG(info.st_mode) && info.st_size > 0)
                     {
                         if (isRegularFile(dst_new_path))
                         {
                             // @todo: check
-                            copy(src_new_path, dst_new_path, true);
+                            struct stat srcStat, dstStat;
+                            lstat(src_new_path, &srcStat);
+                            lstat(dst_new_path, &dstStat);
+
+                            if (srcStat.st_size > dstStat.st_size)
+                            {
+                                copy(src_new_path, dst_new_path, true);
+                            }
                         }
                         else
                         {
@@ -323,45 +356,96 @@ void rec_copy(char *src, char *dst)
     }
 }
 
-void copy_src_dest_single(char *src, char *dst)
+void copy_src_dest_single(char *src, char *dst, bool option_f, bool option_a)
 {
-    if (directoryExist(src))
+    // copy file to file
+    if (isRegularFile(src))
     {
-        char dst_new_path[PATH_MAX];
-        snprintf(dst_new_path, PATH_MAX, "%s/%s", dst, src);
+        // printf("regular file\n");
 
         if (!directoryExist(dst))
         {
-            mkdir(dst, readFileFolderPermission(src));
-            rec_copy(src, dst_new_path);
+            if (file_exists(dst))
+            {
+                copy(src, dst, true);
+            }
+            else if (!file_exists(dst))
+            {
+                copy(src, dst, false);
+            }
         }
-        if (directoryExist(dst))
+        else if (directoryExist(dst))
         {
-            rec_copy(src, dst_new_path);
+            char dst_new_path[PATH_MAX];
+            snprintf(dst_new_path, PATH_MAX, "%s/%s", dst, basename(src));
+            if (file_exists(dst_new_path))
+            {
+
+                struct stat srcStat, dstStat;
+                lstat(src, &srcStat);
+                lstat(dst_new_path, &dstStat);
+
+                if (srcStat.st_size > dstStat.st_size)
+                {
+                    copy(src, dst_new_path, true);
+                }
+            }
+            else if (!file_exists(dst_new_path))
+            {
+                copy(src, dst_new_path, false);
+            }
         }
     }
 
-    if (isRegularFile(src))
+    else if (directoryExist(src) && !is_Link(src))
     {
         if (!directoryExist(dst))
         {
-            mkdir(dst, 0777);
+            printf("destination directory not exists\n");
+            exit(EXIT_FAILURE);
         }
+
+        if (directoryExist(dst))
+        {
+            char dst_new_path[PATH_MAX];
+            snprintf(dst_new_path, PATH_MAX, "%s/%s", dst, basename(src));
+
+            if (!directoryExist(dst_new_path))
+            {
+                mkdir(dst_new_path, readFileFolderPermission(src));
+                chmod(dst_new_path, readFileFolderPermission(src));
+            }
+
+            rec_copy(src, dst_new_path, option_f, option_a);
+        }
+    }
+    else if (is_Link(src))
+    {
+        // printf("regular link\n");
+        if (!directoryExist(dst))
+            exit(EXIT_FAILURE);
+
         char dst_new_path[PATH_MAX];
         snprintf(dst_new_path, PATH_MAX, "%s/%s", dst, src);
-        // if dst already exist
-        if (isRegularFile(dst_new_path))
+        // printf("src: %s dst : %s\n", read_link_real_path(src), dst_new_path);
+
+        if (symlink(read_link_real_path(src), dst_new_path) != 0)
         {
-            // @todo: check
-            copy(src, dst_new_path, true);
+            fprintf(stderr, "cannot create symoblic link of : %s\n", src);
         }
-        else
+
+        // dereference by default which is option f -> false
+        if (option_f == false)
         {
-            copy(src, dst_new_path, false);
+            // change to file the symbolic link if option_f is set to false
+            unlink(src);
+            FILE *fp;
+            fp = fopen(src, "w");
+            fclose(fp);
         }
     }
 }
-void copy_src_dest_multiple(int argc, char *argv[])
+void copy_src_dest_multiple(int argc, char *argv[], bool option_f, bool option_a)
 {
     // because argv[0] is the application name
     int i = 1;
@@ -369,33 +453,144 @@ void copy_src_dest_multiple(int argc, char *argv[])
     char *dst = argv[argc - 1];
     while (i <= (argc - 2))
     {
-        copy_src_dest_single(argv[i], dst);
+        copy_src_dest_single(argv[i], dst, option_f, option_a);
         i++;
     }
+}
+
+int calc_opt(int argc, char *argv[])
+{
+    static const struct option long_options[] =
+        {
+            /* name : has_arg : flag : val */
+            {"permission ", no_argument, 0, 'a'},
+            {"symoblic links ", no_argument, 0, 'f'},
+        };
+    int opt_number = 0;
+
+    int result;
+    int index = -1;
+
+    while ((result = getopt_long(argc, argv, "-a:f:", long_options, &index)) != -1)
+    {
+        switch (result)
+        {
+        case 'a':
+            opt_number |= OPT_PERMS;
+
+            break;
+        case 'f':
+            opt_number |= OPT_LINK;
+            break;
+        case '?':
+
+            exit(EXIT_FAILURE);
+        }
+    }
+    return opt_number;
 }
 
 int main(int argc, char *argv[])
 {
 
-    if (argc < 2)
+    int options_id = calc_opt(argc, argv);
+    if (options_id == 0)
     {
-        fprintf(stderr, "Err: foldername not specified !\n");
-        fprintf(stderr, "usage : ./ultra-cp foldername");
-        return EXIT_FAILURE;
+        // printf("no option \n");
+
+        if (argc < 2)
+        {
+            fprintf(stderr, "Err: foldername not specified !\n");
+            fprintf(stderr, "usage : %s foldername\n", argv[0]);
+            return EXIT_FAILURE;
+        }
+
+        switch (argc)
+        {
+        case 2: // affichage
+            if (directoryExist(argv[1]))
+                readFolder(argv[1]);
+            else
+                exit(EXIT_FAILURE);
+
+            break;
+
+        case 3: // copy single
+            copy_src_dest_single(argv[1], argv[2], false, false);
+            // if (file_exists(argv[1]) && file_exists(argv[2]))
+            //     copy(argv[1], argv[2], true);
+
+            // if (file_exists(argv[1]) && !file_exists(argv[2]))
+            //     copy(argv[1], argv[2], false);
+
+            // else
+            //     exit(EXIT_FAILURE);
+            break;
+        default:
+            copy_src_dest_multiple(argc, argv, false, false);
+            break;
+        }
     }
 
-    switch (argc)
+    // option -f
+    else if (options_id == 1 && (strcmp(argv[1], "-f") == 0))
     {
-    case 2: // affichage
-        readFolder(argv[1]);
-        break;
+        // printf("only -f with paramters\n");
 
-    case 3: // copy single
-        copy_src_dest_single(argv[1], argv[2]);
-        break;
-    default:
-        copy_src_dest_multiple(argc, argv);
-        break;
+        if (argc < 3)
+        {
+            fprintf(stderr, "Err: foldername not specified !\n");
+            fprintf(stderr, "usage : ./ultra-cp foldername\n");
+            return EXIT_FAILURE;
+        }
+
+        switch (argc)
+        {
+        case 3: // affichage
+            readFolder(argv[1]);
+            break;
+
+        case 4: // copy single
+            copy_src_dest_single(argv[2], argv[3], true, false);
+            break;
+        default:
+            copy_src_dest_multiple(argc, argv, true, false);
+            break;
+        }
+    }
+    // option -a
+    else if (options_id == 2 && (strcmp(argv[1], "-a") == 0))
+    {
+        // printf("only -a with paramters\n");
+        if (argc < 3)
+        {
+            fprintf(stderr, "Err: foldername not specified !\n");
+            fprintf(stderr, "usage : ./ultra-cp foldername\n");
+            return EXIT_FAILURE;
+        }
+
+        switch (argc)
+        {
+        case 3: // affichage
+            readFolder(argv[1]);
+            break;
+
+        case 4: // copy single
+            copy_src_dest_single(argv[2], argv[3], false, true);
+            break;
+        default:
+            copy_src_dest_multiple(argc, argv, false, true);
+            break;
+        }
+    }
+
+    // option mixed
+    else
+    {
+        printf("USAGE [OPTIONS] [PARAMETERS]: \n");
+        printf("ONLY ONE OPTION A TIME COULD BE PASSED !\n");
+        printf("-a: change permissions\n");
+        printf("-f: dereference symbolic links\n");
     }
 
     return EXIT_SUCCESS;
